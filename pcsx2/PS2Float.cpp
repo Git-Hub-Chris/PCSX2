@@ -468,18 +468,17 @@ PS2Float PS2Float::Itof(s32 complement, s32 f1)
 
 	s32 resExponent;
 
+	bool negative = f1 < 0;
+
 	if (f1 == -2147483648)
 	{
-		// special case
-		resExponent = 158 - complement;
-
-		if (resExponent >= 0)
-			return PS2Float(true, (u8)resExponent, 0);
-
-		return PS2Float(0);
+		if (complement <= 0)
+			// special case
+			return PS2Float(0xcf000000);
+		else
+			f1 = 2147483647;
 	}
 
-	bool negative = f1 < 0;
 	s32 u = std::abs(f1);
 
 	s32 shifts;
@@ -500,7 +499,9 @@ PS2Float PS2Float::Itof(s32 complement, s32 f1)
 
 	resExponent = BIAS + MANTISSA_BITS - shifts - complement;
 
-	if (resExponent >= 0)
+	if (resExponent >= 158)
+		return negative ? PS2Float(0xcf000000) : PS2Float(0x4f000000);
+	else if (resExponent >= 0)
 		return PS2Float(negative, (u8)resExponent, (u32)u);
 
 	return PS2Float(0);
@@ -520,7 +521,7 @@ s32 PS2Float::Ftoi(s32 complement, u32 f1)
 		f1 |= 0x800000;
 		if (complement < 158)
 		{
-			if (complement >= 126)
+			if (complement > 126)
 			{
 				f1 = (f1 << 7) >> (31 - ((u8)complement - 126));
 				if ((s32)a < 0)
