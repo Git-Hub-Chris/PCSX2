@@ -467,7 +467,8 @@ void GSState::DumpVertices(const std::string& filename)
 		file << std::setfill('0') << std::setw(3) << unsigned(v.RGBAQ.R) << DEL;
 		file << std::setfill('0') << std::setw(3) << unsigned(v.RGBAQ.G) << DEL;
 		file << std::setfill('0') << std::setw(3) << unsigned(v.RGBAQ.B) << DEL;
-		file << std::setfill('0') << std::setw(3) << unsigned(v.RGBAQ.A);
+		file << std::setfill('0') << std::setw(3) << unsigned(v.RGBAQ.A) << DEL;
+		file << "FOG: " << std::setfill('0') << std::setw(3) << unsigned(v.FOG);
 		file << std::endl;
 	}
 
@@ -1674,7 +1675,8 @@ void GSState::FlushPrim()
 			Console.Warning("GS: Possible invalid draw, Frame PSM %x ZPSM %x", m_context->FRAME.PSM, m_context->ZBUF.PSM);
 		}
 #endif
-
+		// Update scissor, it may have been modified by a previous draw
+		m_env.CTXT[PRIM->CTXT].UpdateScissor();
 		m_vt.Update(m_vertex.buff, m_index.buff, m_vertex.tail, m_index.tail, GSUtil::GetPrimClass(PRIM->PRIM));
 
 		// Texel coordinate rounding
@@ -3094,6 +3096,16 @@ __forceinline bool GSState::IsAutoFlushDraw(u32 prim)
 	if (!(GSUtil::GetChannelMask(m_context->TEX0.PSM) & GSUtil::GetChannelMask(m_context->FRAME.PSM, m_context->FRAME.FBMSK | ~(GSLocalMemory::m_psm[m_context->FRAME.PSM].fmsk))))
 		return false;
 
+	// Try to detect shuffles, because these will not autoflush, they by design clash.
+	if (GSLocalMemory::m_psm[m_context->FRAME.PSM].bpp == 16 && GSLocalMemory::m_psm[m_context->TEX0.PSM].bpp == 16)
+	{
+		// Pretty confident here...
+		GSVertex* buffer = &m_vertex.buff[0];
+		const bool const_spacing = std::abs(buffer[m_index.buff[0]].U - buffer[m_index.buff[0]].XYZ.X) == std::abs(m_v.U - m_v.XYZ.X) && std::abs(buffer[m_index.buff[1]].XYZ.X - buffer[m_index.buff[0]].XYZ.X) < 64;
+
+		if (const_spacing)
+			return false;
+	}
 	const u32 frame_mask = GSLocalMemory::m_psm[m_context->FRAME.PSM].fmsk;
 	const bool frame_hit = m_context->FRAME.Block() == m_context->TEX0.TBP0 && !(m_context->TEST.ATE && m_context->TEST.ATST == 0 && m_context->TEST.AFAIL == 2) && ((m_context->FRAME.FBMSK & frame_mask) != frame_mask);
 	// There's a strange behaviour we need to test on a PS2 here, if the FRAME is a Z format, like Powerdrome something swaps over, and it seems Alpha Fail of "FB Only" writes to the Z.. it's odd.
@@ -3859,7 +3871,8 @@ GSState::TextureMinMaxResult GSState::GetTextureMinMax(GIFRegTEX0 TEX0, GIFRegCL
 		const GSVector2 grad(uv_range / pos_range);
 		// Adjust texture range when sprites get scissor clipped. Since we linearly interpolate, this
 		// optimization doesn't work when perspective correction is enabled.
-		if (m_vt.m_primclass == GS_SPRITE_CLASS && PRIM->FST == 1 && m_primitive_covers_without_gaps != NoGapsType::GapsFound)
+		// Allowing for quads when the gradiant is 1. It's not guaranteed (would need to check the grandient on each vector), but should be close enough.
+		if ((m_vt.m_primclass == GS_SPRITE_CLASS || (m_vt.m_primclass == GS_TRIANGLE_CLASS && TrianglesAreQuads(false) && grad.x == 1.0f && grad.y == 1.0f)) && m_primitive_covers_without_gaps != NoGapsType::GapsFound)
 		{
 			// When coordinates are fractional, GS appears to draw to the right/bottom (effectively
 			// taking the ceiling), not to the top/left (taking the floor).
@@ -3870,11 +3883,24 @@ GSState::TextureMinMaxResult GSState::GetTextureMinMax(GIFRegTEX0 TEX0, GIFRegCL
 
 				const GSVertex* vert_first = &m_vertex.buff[m_index.buff[0]];
 				const GSVertex* vert_second = &m_vertex.buff[m_index.buff[1]];
+				const GSVertex* vert_third = &m_vertex.buff[m_index.buff[2]];
 
 				GSVector4 new_st = st;
+				bool u_forward_check = false;
+				bool x_forward_check = false;
+				if (m_vt.m_primclass == GS_TRIANGLE_CLASS)
+				{
+					u_forward_check = PRIM->FST ? ((vert_first->U < vert_second->U) || (vert_first->U < vert_third->U)) : (((vert_first->ST.S / vert_first->RGBAQ.Q) < (vert_second->ST.S / vert_second->RGBAQ.Q)) || ((vert_first->ST.S / vert_first->RGBAQ.Q) < (vert_third->ST.S / vert_third->RGBAQ.Q)));
+					x_forward_check = (vert_first->XYZ.X < vert_second->XYZ.X) || (vert_first->XYZ.X < vert_third->XYZ.X);
+				}
+				else
+				{
+					u_forward_check = PRIM->FST ? (vert_first->U < vert_second->U) : ((vert_first->ST.T / vert_first->RGBAQ.Q) < (vert_second->ST.T / vert_first->RGBAQ.Q));
+					x_forward_check = vert_first->XYZ.Y < vert_second->XYZ.Y;
+				}
 				// Check if the UV coords are going in a different direction to the verts, if they match direction, no need to swap
-				const bool u_forward = vert_first->U < vert_second->U;
-				const bool x_forward = vert_first->XYZ.X < vert_second->XYZ.X;
+				const bool u_forward = u_forward_check;
+				const bool x_forward = x_forward_check;
 				const bool swap_x = u_forward != x_forward;
 
 				if (int_rc.left < scissored_rc.left)
@@ -3897,9 +3923,20 @@ GSState::TextureMinMaxResult GSState::GetTextureMinMax(GIFRegTEX0 TEX0, GIFRegCL
 					st.x = new_st.x;
 					st.z = new_st.z;
 				}
-
-				const bool v_forward = vert_first->V < vert_second->V;
-				const bool y_forward = vert_first->XYZ.Y < vert_second->XYZ.Y;
+				bool v_forward_check = false;
+				bool y_forward_check = false;
+				if (m_vt.m_primclass == GS_TRIANGLE_CLASS)
+				{
+					v_forward_check = PRIM->FST ? ((vert_first->V < vert_second->V) || (vert_first->V < vert_third->V)) : (((vert_first->ST.T / vert_first->RGBAQ.Q) < (vert_second->ST.T / vert_second->RGBAQ.Q)) || ((vert_first->ST.T / vert_first->RGBAQ.Q) < (vert_third->ST.T / vert_third->RGBAQ.Q)));
+					y_forward_check = (vert_first->XYZ.Y < vert_second->XYZ.Y) || (vert_first->XYZ.Y < vert_third->XYZ.Y);
+				}
+				else
+				{
+					v_forward_check = PRIM->FST ? (vert_first->V < vert_second->V) : ((vert_first->ST.T / vert_first->RGBAQ.Q) < (vert_second->ST.T / vert_first->RGBAQ.Q));
+					y_forward_check = vert_first->XYZ.Y < vert_second->XYZ.Y;
+				}
+				const bool v_forward = v_forward_check;
+				const bool y_forward = y_forward_check;
 				const bool swap_y = v_forward != y_forward;
 
 				if (int_rc.top < scissored_rc.top)

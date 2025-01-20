@@ -113,12 +113,14 @@ private:
 	void SetTCOffset();
 
 	bool IsPossibleChannelShuffle() const;
+	bool IsPageCopy() const;
 	bool NextDrawMatchesShuffle() const;
 	bool IsSplitTextureShuffle(GSTextureCache::Target* rt);
 	GSVector4i GetSplitTextureShuffleDrawRect() const;
 	u32 GetEffectiveTextureShuffleFbmsk() const;
 
 	static GSVector4i GetDrawRectForPages(u32 bw, u32 psm, u32 num_pages);
+	bool IsSinglePageDraw() const;
 	bool TryToResolveSinglePageFramebuffer(GIFRegFRAME& FRAME, bool only_next_draw);
 
 	bool IsSplitClearActive() const;
@@ -172,6 +174,7 @@ private:
 
 	u32 m_last_channel_shuffle_fbmsk = 0;
 	u32 m_last_channel_shuffle_fbp = 0;
+	u32 m_last_channel_shuffle_tbp = 0;
 	u32 m_last_channel_shuffle_end_block = 0;
 
 	GIFRegFRAME m_split_clear_start = {};

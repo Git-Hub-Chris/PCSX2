@@ -194,7 +194,7 @@ bool GSHwHack::GSC_Tekken5(GSRendererHW& r, int& skip)
 			return true;
 		}
 
-		if (!s_nativeres && r.PRIM->PRIM == GS_SPRITE && RTME && RTEX0.TFX == 1 && RFPSM == RTPSM && RTPSM == PSMCT32 && RFBMSK == 0xFF000000 && r.m_index.tail > 2)
+		if (!s_nativeres && r.PRIM->PRIM == GS_SPRITE && RTME && RTEX0.TFX == 1 && !r.PRIM->ABE && RFPSM == RTPSM && RTPSM == PSMCT32 && RFBMSK == 0xFF000000 && r.m_index.tail > 2)
 		{
 			// Don't enable hack on native res.
 			// Fixes ghosting/blur effect and white lines appearing in stages: Moonfit Wilderness, Acid Rain - caused by upscaling.
@@ -203,12 +203,6 @@ bool GSHwHack::GSC_Tekken5(GSRendererHW& r, int& skip)
 			const GSVector4i draw_size(r.m_vt.m_min.p.x, r.m_vt.m_min.p.y, r.m_vt.m_max.p.x + 1.0f, r.m_vt.m_max.p.y + 1.0f);
 			const GSVector4i read_size(r.m_vt.m_min.t.x, r.m_vt.m_min.t.y, r.m_vt.m_max.t.x + 0.5f, r.m_vt.m_max.t.y + 0.5f);
 			r.ReplaceVerticesWithSprite(draw_size, read_size, GSVector2i(read_size.width(), read_size.height()), draw_size);
-		}
-		else if (RZTST == 1 && RTME && (RFBP == 0x02bc0 || RFBP == 0x02be0 || RFBP == 0x02d00 || RFBP == 0x03480 || RFBP == 0x034a0) && RFPSM == RTPSM && RTBP0 == 0x00000 && RTPSM == PSMCT32)
-		{
-			// The moving display effect(flames) is not emulated properly in the entire screen so let's remove the effect in the stage: Burning Temple. Related to half screen bottom issue.
-			// Fixes black lines in the stage: Burning Temple - caused by upscaling. Note the black lines can also be fixed with Merge Sprite hack.
-			skip = 2;
 		}
 	}
 
@@ -1047,7 +1041,7 @@ bool GSHwHack::OI_SonicUnleashed(GSRendererHW& r, GSTexture* rt, GSTexture* ds, 
 	// compute shadow in RG,
 	// save result in alpha with a TS,
 	// Restore RG channel that we previously copied to render shadows.
-
+	// Important note: The game downsizes the target to half height, then later expands it back up to full size, that's why PCSX2 doesn't like it, we don't support that behaviour.
 	const GIFRegTEX0& Texture = RTEX0;
 
 	GIFRegTEX0 Frame = {};
@@ -1058,9 +1052,9 @@ bool GSHwHack::OI_SonicUnleashed(GSRendererHW& r, GSTexture* rt, GSTexture* ds, 
 	if ((!rt) || (!RPRIM->TME) || (GSLocalMemory::m_psm[Texture.PSM].bpp != 16) || (GSLocalMemory::m_psm[Frame.PSM].bpp != 16) || (Texture.TBP0 == Frame.TBP0) || (Frame.TBW != 16 && Texture.TBW != 16))
 		return true;
 
-	GL_INS("OI_SonicUnleashed replace draw by a copy");
+	GL_INS("OI_SonicUnleashed replace draw by a copy draw %d", r.s_n);
 
-	GSTextureCache::Target* src = g_texture_cache->LookupTarget(Texture, GSVector2i(1, 1), r.GetTextureScaleFactor(), GSTextureCache::RenderTarget);
+	GSTextureCache::Target* src = g_texture_cache->LookupTarget(Texture, GSVector2i(1, 1), r.GetTextureScaleFactor(), GSTextureCache::RenderTarget, true, 0, false, false, true, true, GSVector4i::zero(), true);
 
 	if (!src)
 		return true;
@@ -1086,6 +1080,7 @@ bool GSHwHack::OI_SonicUnleashed(GSRendererHW& r, GSTexture* rt, GSTexture* ds, 
 	const GSVector2i copy_size(std::min(rt_size.x, src_size.x), std::min(rt_size.y, src_size.y));
 
 	const GSVector4 sRect(0.0f, 0.0f, static_cast<float>(copy_size.x) / static_cast<float>(src_size.x), static_cast<float>(copy_size.y) / static_cast<float>(src_size.y));
+	// This is kind of a bodge because the game confuses everything since the source is really 16bit and it assumes it's really drawing 16bit on the copy back, resizing the target.
 	const GSVector4 dRect(0, 0, copy_size.x, copy_size.y);
 
 	g_gs_device->StretchRect(src->m_texture, sRect, rt, dRect, true, true, true, false);
