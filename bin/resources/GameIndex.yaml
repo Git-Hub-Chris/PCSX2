@@ -67429,6 +67429,11 @@ SLUS-21218:
   name: "Tak - The Great Juju Challenge"
   region: "NTSC-U"
   compat: 5
+  memcardFilters:
+    - "SLUS-21218"
+    - "SLUS-21252"
+    - "SLUS-21277"
+    - "SLUS-21284"
 SLUS-21219:
   name: "Pac-Man World 3"
   region: "NTSC-U"
@@ -67672,6 +67677,11 @@ SLUS-21252:
     recommendedBlendingLevel: 3 # Fixes missing lights.
     halfPixelOffset: 4 # Aligns post processing.
     nativeScaling: 2 # Fixes post effects.
+  memcardFilters:
+    - "SLUS-21218"
+    - "SLUS-21252"
+    - "SLUS-21277"
+    - "SLUS-21284"
 SLUS-21253:
   name: "TY the Tasmanian Tiger 3 - Night of the Quinkan"
   region: "NTSC-U"
@@ -67863,6 +67873,11 @@ SLUS-21277:
     autoFlush: 2 # Needed for recursive mipmap rendering.
     nativeScaling: 1 # Fixes post effects.
     getSkipCount: "GSC_BlueTongueGames" # Render mipmaps on the CPU.
+  memcardFilters:
+    - "SLUS-21218"
+    - "SLUS-21252"
+    - "SLUS-21277"
+    - "SLUS-21284"
 SLUS-21278:
   name: "SSX On Tour"
   region: "NTSC-U"
@@ -67933,6 +67948,11 @@ SLUS-21284:
     autoFlush: 2 # Fixes glows. Also needed for recursive mipmap rendering.
     textureInsideRT: 1 # Fixes rainbow lighting for some areas.
     getSkipCount: "GSC_BlueTongueGames" # Mipmap rendering on CPU.
+  memcardFilters:
+    - "SLUS-21218"
+    - "SLUS-21252"
+    - "SLUS-21277"
+    - "SLUS-21284"
 SLUS-21285:
   name: "Ultimate Spider-Man [Limited Edition]"
   region: "NTSC-U"
